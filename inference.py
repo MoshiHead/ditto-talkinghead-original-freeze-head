@@ -24,12 +24,23 @@ def load_pkl(pkl):
         return pickle.load(f)
 
 
-def run(SDK: StreamSDK, audio_path: str, source_path: str, output_path: str, more_kwargs: str | dict = {}):
+def run(
+    SDK: StreamSDK,
+    audio_path: str,
+    source_path: str,
+    output_path: str,
+    more_kwargs: str | dict = {},
+    freeze_head: bool = True,
+):
 
     if isinstance(more_kwargs, str):
         more_kwargs = load_pkl(more_kwargs)
     setup_kwargs = more_kwargs.get("setup_kwargs", {})
     run_kwargs = more_kwargs.get("run_kwargs", {})
+
+    # freeze the rigid head motion (pitch/yaw/roll/t/scale) to the source pose.
+    # lips, eyes, blinks and expression are still fully driven by the audio.
+    setup_kwargs.setdefault("freeze_head", freeze_head)
 
     SDK.setup(source_path, output_path, **setup_kwargs)
 
@@ -72,6 +83,11 @@ if __name__ == "__main__":
     parser.add_argument("--audio_path", type=str, help="path to input wav")
     parser.add_argument("--source_path", type=str, help="path to input image")
     parser.add_argument("--output_path", type=str, help="path to output mp4")
+    parser.add_argument(
+        "--no_freeze_head",
+        action="store_true",
+        help="restore the original behaviour (head pose driven by the audio)",
+    )
     args = parser.parse_args()
 
     # init sdk
@@ -86,4 +102,4 @@ if __name__ == "__main__":
 
     # run
     # seed_everything(1024)
-    run(SDK, audio_path, source_path, output_path)
+    run(SDK, audio_path, source_path, output_path, freeze_head=not args.no_freeze_head)

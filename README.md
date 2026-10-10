@@ -175,6 +175,42 @@ python scripts/cvt_onnx_to_trt.py --onnx_dir "./checkpoints/ditto_onnx" --trt_di
 Then run `inference.py` with `--data_root=./checkpoints/ditto_trt_custom`.
 
 
+## 🔒 Frozen Head (this fork)
+
+This fork freezes the **rigid head motion** so the head stays exactly in the
+pose of the source image/video, while *everything else is unchanged*: lips,
+jaw, eye blinks, gaze and all other expression motion are still fully driven
+by the audio.
+
+The driving motion produced by the LMDM is split into an expression part
+(`exp`) and a rigid part (`pitch`, `yaw`, `roll`, `t`, `scale`). With the
+freeze enabled, `core/atomic_components/motion_stitch.py`:
+
+1. removes the rigid keys from `use_d_keys`, so they are never taken from the
+   driving sequence;
+2. drops the pose control kwargs (`delta_pitch`/`delta_yaw`/`delta_roll`,
+   `alpha_pitch`/`alpha_yaw`/`alpha_roll`) which would otherwise re-introduce
+   head motion;
+3. hard-resets the rigid keys to the source values as the last step before the
+   keypoint transform, after relative-motion mixing, ctrl and fade.
+
+It is **on by default**. To get the original behaviour back:
+
+```shell
+python inference.py ... --no_freeze_head
+```
+
+or programmatically:
+
+```python
+SDK.setup(source_path, output_path, freeze_head=False)
+```
+
+See [`inference_freeze_head.ipynb`](./inference_freeze_head.ipynb) for an
+end-to-end runnable notebook (clone → install → download checkpoints →
+inference → video).
+
+
 ## ⚡ PyTorch Model
 *Based on community interest and to better support further development, we are now open-sourcing the PyTorch version of the model.*
 

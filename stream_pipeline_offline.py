@@ -116,6 +116,9 @@ class StreamSDK:
         self.fade_type = kwargs.get("fade_type", "")    # "" | "d0" | "s"
         self.fade_out_keys = kwargs.get("fade_out_keys", ("exp",))
         self.flag_stitching = kwargs.get("flag_stitching", True)
+        # freeze the rigid head motion (pitch/yaw/roll/t/scale) to the source pose.
+        # everything else (lips, eyes, blinks, expression) is still driven by audio.
+        self.freeze_head = kwargs.get("freeze_head", True)
 
         self.ctrl_info = kwargs.get("ctrl_info", dict())
         self.overall_ctrl_info = kwargs.get("overall_ctrl_info", dict())
@@ -192,6 +195,7 @@ class StreamSDK:
             d0=None,
             ch_info=self.ch_info,
             overall_ctrl_info=self.overall_ctrl_info,
+            freeze_head=self.freeze_head,
         )
 
         # ======== Video Writer ========

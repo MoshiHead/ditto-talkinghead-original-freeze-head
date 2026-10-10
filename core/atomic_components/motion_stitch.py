@@ -25,6 +25,51 @@ kwargs:
 """
 
 
+# ============================================================================
+# Head freeze
+# ----------------------------------------------------------------------------
+# The driving motion predicted by the LMDM contains both facial deformation
+# ("exp") and rigid head motion ("pitch"/"yaw"/"roll"/"t"/"scale").
+# When `freeze_head` is enabled we keep taking the expression from the driving
+# motion (lips, eyes, blinks, micro-expressions are untouched) but we force
+# every rigid-head component to the value of the source frame, so the head
+# stays exactly where it is in the source image/video.
+# ============================================================================
+
+HEAD_POSE_KEYS = ("pitch", "yaw", "roll", "t", "scale")
+
+# ctrl kwargs that would re-introduce rigid head motion
+HEAD_CTRL_KEYS = (
+    "delta_pitch", "delta_yaw", "delta_roll",
+    "alpha_pitch", "alpha_yaw", "alpha_roll",
+)
+
+
+def drop_head_keys(use_d_keys):
+    """Remove the rigid-head keys from `use_d_keys` (tuple/list or dict form)."""
+    if use_d_keys is None:
+        return None
+    if isinstance(use_d_keys, dict):
+        return {k: v for k, v in use_d_keys.items() if k not in HEAD_POSE_KEYS}
+    return tuple(k for k in use_d_keys if k not in HEAD_POSE_KEYS)
+
+
+def drop_head_ctrl_kwargs(kwargs):
+    """Strip pose offset/scale ctrl kwargs so they cannot move the head."""
+    if not kwargs:
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k not in HEAD_CTRL_KEYS}
+
+
+def freeze_head_pose(x_d_info, x_s_info):
+    """Hard-reset the rigid head components of x_d_info to the source ones."""
+    for k in HEAD_POSE_KEYS:
+        if k in x_s_info:
+            v = x_s_info[k]
+            x_d_info[k] = v.copy() if isinstance(v, np.ndarray) else copy.deepcopy(v)
+    return x_d_info
+
+
 def ctrl_motion(x_d_info, **kwargs):
     # pose + offset
     for kk in ["delta_pitch", "delta_yaw", "delta_roll"]:
@@ -314,8 +359,10 @@ class MotionStitch:
         d0=None,
         ch_info=None,
         overall_ctrl_info=None,
+        freeze_head=True,
     ):
         self.is_image_flag = is_image_flag
+        self.freeze_head = freeze_head
         if use_d_keys is None:
             if self.is_image_flag:
                 self.use_d_keys = ("exp", "pitch", "yaw", "roll", "t")
@@ -323,6 +370,10 @@ class MotionStitch:
                 self.use_d_keys = ("exp", )
         else:
             self.use_d_keys = use_d_keys
+
+        if self.freeze_head:
+            # never take the rigid head motion from the driving sequence
+            self.use_d_keys = drop_head_keys(self.use_d_keys)
 
         if drive_eye is None:
             if self.is_image_flag:
@@ -415,6 +466,9 @@ class MotionStitch:
 
         kwargs = self._merge_kwargs(self.overall_ctrl_info, kwargs)
 
+        if getattr(self, "freeze_head", False):
+            kwargs = drop_head_ctrl_kwargs(kwargs)
+
         if self.scale_ratio is None:
             self.scale_b = x_s_info['scale'].item()
             self.scale_ratio = self.scale_a / self.scale_b
@@ -466,6 +520,12 @@ class MotionStitch:
                     if self.is_image_flag:
                         self.fade_dst = fade_dst
             x_d_info = fade(x_d_info, fade_dst, fade_alpha, fade_keys)
+
+        if self.freeze_head:
+            # final hard override: whatever happened above (relative_d, ctrl,
+            # fade, ...) the rigid head pose is exactly the source pose, so the
+            # head is completely still while exp/eyes/lips keep being driven.
+            x_d_info = freeze_head_pose(x_d_info, x_s_info)
 
         if self.drive_eye:
             if self.pose_s is None:
