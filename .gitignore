@@ -32,7 +32,7 @@ log/*
 *.wav
 *.pth
 *.pyc
-*.jpeg
+# *.jpeg
 
 prepare_data
 
